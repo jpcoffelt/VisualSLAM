@@ -263,6 +263,8 @@ def main():
 
     gt_path = []
     estimated_path = []
+    gt_poses = []
+    cur_poses = []
     for i, gt_pose in enumerate(tqdm(vo.gt_poses, unit="pose")):
         if i == 0:
             cur_pose = gt_pose
@@ -275,11 +277,21 @@ def main():
             print ("The current pose used x,y: \n" + str(cur_pose[0,3]) + "   " + str(cur_pose[2,3]) )
         gt_path.append((gt_pose[0, 3], gt_pose[2, 3]))
         estimated_path.append((cur_pose[0, 3], cur_pose[2, 3]))
+
+        _gt_pose = gt_pose.flatten()
+        _cur_pose = cur_pose.flatten()
+        gt_poses.append(_gt_pose[:12])
+        cur_poses.append(_cur_pose[:12])
         
   
     
-    plotting.visualize_paths(gt_path, estimated_path, "Visual Odometry", file_out=os.path.basename(data_dir) + ".html")
+    plotting.visualize_paths(gt_path, estimated_path, "Visual Odometry",
+                             file_out=os.path.join("output", os.path.basename(data_dir), "original.html"))
 
+    np.savetxt(os.path.join("output", os.path.basename(data_dir), "original_gt.out"), gt_poses, delimiter=' ')
+    np.savetxt(os.path.join("output", os.path.basename(data_dir), "original_est.out"), cur_poses, delimiter=' ')
+    np.save(os.path.join("output", os.path.basename(data_dir), "original_gt.npy"), gt_poses)
+    np.save(os.path.join("output", os.path.basename(data_dir), "original_est.npy"), cur_poses)
 
 if __name__ == "__main__":
     main()
