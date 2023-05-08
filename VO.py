@@ -4,6 +4,7 @@ import cv2
 import random
 from matplotlib import pyplot as plt 
 
+from lib.utils.pose_converter import cvt_pose_mat2vec, cvt_pose_vec2mat
 from lib.visualization import plotting
 from lib.visualization.video import play_trip
 
@@ -11,18 +12,23 @@ from tqdm import tqdm
 
 
 class VisualOdometry():
-    def __init__(self, data_dir):
-        self.K, self.P = self._load_calib(os.path.join(data_dir, 'calib.txt'))
-        self.gt_poses = self._load_poses(os.path.join(data_dir, 'poses.txt'))
-        self.images = self._load_images(os.path.join(data_dir, 'image_l'))
+    def __init__(self, data_dir, use_quaternions=True):
+        self.use_quaternions = use_quaternions
+        if use_quaternions:
+            poses_filename = "poses_vec.txt"
+        else:
+            poses_filename = "poses_mat.txt"
+
+        self.K, self.P = self.load_calib(os.path.join(data_dir, 'calib.txt'))
+        self.gt_poses = self.load_poses(os.path.join(data_dir, poses_filename))
+        self.images = self.load_images(os.path.join(data_dir, 'image_l'))
         self.orb = cv2.ORB_create(3000)
         FLANN_INDEX_LSH = 6
         index_params = dict(algorithm=FLANN_INDEX_LSH, table_number=6, key_size=12, multi_probe_level=1)
         search_params = dict(checks=50)
         self.flann = cv2.FlannBasedMatcher(indexParams=index_params, searchParams=search_params)
 
-    @staticmethod
-    def _load_calib(filepath):
+    def load_calib(self, filepath):
         """
         Loads the calibration of the camera
         Parameters
@@ -40,8 +46,7 @@ class VisualOdometry():
             K = P[0:3, 0:3]
         return K, P
 
-    @staticmethod
-    def _load_poses(filepath):
+    def load_poses(self, filepath):
         """
         Loads the GT poses
 
@@ -56,14 +61,16 @@ class VisualOdometry():
         poses = []
         with open(filepath, 'r') as f:
             for line in f.readlines():
-                T = np.fromstring(line, dtype=np.float64, sep=' ')
-                T = T.reshape(3, 4)
-                T = np.vstack((T, [0, 0, 0, 1]))
-                poses.append(T)
+                pose = np.fromstring(line, dtype=np.float64, sep=' ')
+                if self.use_quaternions:
+                    pose = cvt_pose_vec2mat(pose)
+                else:
+                    pose = pose.reshape((3, 4))
+                    pose = np.vstack((pose, [0, 0, 0, 1]))
+                poses.append(pose)
         return poses
 
-    @staticmethod
-    def _load_images(filepath):
+    def load_images(self, filepath):
         """
         Loads the images
 
@@ -254,9 +261,12 @@ class VisualOdometry():
 
 
 
+
 def main():
-    data_dir = 'KITTI_sequence_2'  # Try KITTI_sequence_2 too
-    vo = VisualOdometry(data_dir)
+    DATA_DIR = 'KITTI_sequence_2'  # Try KITTI_sequence_2 too
+    USE_QUATERNIONS = True
+
+    vo = VisualOdometry(DATA_DIR, use_quaternions=USE_QUATERNIONS)
 
 
     # play_trip(vo.images)  # Comment out to not play the trip
@@ -264,34 +274,43 @@ def main():
     gt_path = []
     estimated_path = []
     gt_poses = []
-    cur_poses = []
+    est_poses = []
     for i, gt_pose in enumerate(tqdm(vo.gt_poses, unit="pose")):
         if i == 0:
-            cur_pose = gt_pose
+            est_pose = gt_pose
         else:
             q1, q2 = vo.get_matches(i)
             transf = vo.get_pose(q1, q2)
-            cur_pose = np.matmul(cur_pose, np.linalg.inv(transf))
-            print ("\nGround truth pose:\n" + str(gt_pose))
-            print ("\n Current pose:\n" + str(cur_pose))
-            print ("The current pose used x,y: \n" + str(cur_pose[0,3]) + "   " + str(cur_pose[2,3]) )
-        gt_path.append((gt_pose[0, 3], gt_pose[2, 3]))
-        estimated_path.append((cur_pose[0, 3], cur_pose[2, 3]))
-
-        _gt_pose = gt_pose.flatten()
-        _cur_pose = cur_pose.flatten()
-        gt_poses.append(_gt_pose[:12])
-        cur_poses.append(_cur_pose[:12])
+            est_pose = np.matmul(est_pose, np.linalg.inv(transf))
+            # print ("\nGround truth pose:\n" + str(gt_pose))
+            # print ("\n Current pose:\n" + str(est_pose))
+            # print ("The current pose used x,y: \n" + str(est_pose[0,3]) + "   " + str(est_pose[2,3]) )
         
-  
-    
-    plotting.visualize_paths(gt_path, estimated_path, "Visual Odometry",
-                             file_out=os.path.join("output", os.path.basename(data_dir), "original.html"))
+        gt_path.append((gt_pose[0, 3], gt_pose[2, 3]))
+        estimated_path.append((est_pose[0, 3], est_pose[2, 3]))
 
-    np.savetxt(os.path.join("output", os.path.basename(data_dir), "original_gt.out"), gt_poses, delimiter=' ')
-    np.savetxt(os.path.join("output", os.path.basename(data_dir), "original_est.out"), cur_poses, delimiter=' ')
-    np.save(os.path.join("output", os.path.basename(data_dir), "original_gt.npy"), gt_poses)
-    np.save(os.path.join("output", os.path.basename(data_dir), "original_est.npy"), cur_poses)
+        if USE_QUATERNIONS:
+            _gt_pose = cvt_pose_mat2vec(gt_pose)
+            _est_pose = cvt_pose_mat2vec(est_pose)          
+        else:
+            _gt_pose = gt_pose[:3, :].flatten()
+            _est_pose = est_pose[:3, :].flatten()
+        gt_poses.append(_gt_pose)
+        est_poses.append(_est_pose)
+
+    if USE_QUATERNIONS:
+        prefix = "vec"
+    else:
+        prefix = "mat"
+
+
+    plotting.visualize_paths(gt_path, estimated_path, "Visual Odometry",
+                             file_out=os.path.join("output", os.path.basename(DATA_DIR), prefix + ".html"))
+
+    np.savetxt(os.path.join("output", os.path.basename(DATA_DIR), prefix + "_gt.out"), gt_poses, delimiter=' ')
+    np.savetxt(os.path.join("output", os.path.basename(DATA_DIR), prefix + "_est.out"), est_poses, delimiter=' ')
+    np.save(os.path.join("output", os.path.basename(DATA_DIR), prefix + "_gt.npy"), gt_poses)
+    np.save(os.path.join("output", os.path.basename(DATA_DIR), prefix + "_est.npy"), est_poses)
 
 if __name__ == "__main__":
     main()

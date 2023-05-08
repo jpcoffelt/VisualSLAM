@@ -13,7 +13,7 @@ from tqdm import tqdm
 class VisualOdometry():
     def __init__(self, data_dir):
         self.K, self.P = self._load_calib(os.path.join(data_dir, 'calib.txt'))
-        self.gt_poses = self._load_poses(os.path.join(data_dir, 'poses.txt'))
+        self.gt_poses = self._load_poses(os.path.join(data_dir, 'poses_old.txt'))
         self.images = self._load_images(os.path.join(data_dir, 'image_l'))
         self.orb = cv2.ORB_create(3000)
         FLANN_INDEX_LSH = 6
@@ -255,7 +255,7 @@ class VisualOdometry():
 
 
 def main():
-    data_dir = 'KITTI_sequence_2'  # Try KITTI_sequence_2 too
+    data_dir = 'KITTI_sequence_1'  # Try KITTI_sequence_2 too
     vo = VisualOdometry(data_dir)
 
 
@@ -277,21 +277,11 @@ def main():
             print ("The current pose used x,y: \n" + str(cur_pose[0,3]) + "   " + str(cur_pose[2,3]) )
         gt_path.append((gt_pose[0, 3], gt_pose[2, 3]))
         estimated_path.append((cur_pose[0, 3], cur_pose[2, 3]))
-
-        _gt_pose = gt_pose.flatten()
-        _cur_pose = cur_pose.flatten()
-        gt_poses.append(_gt_pose[:12])
-        cur_poses.append(_cur_pose[:12])
         
   
     
     plotting.visualize_paths(gt_path, estimated_path, "Visual Odometry",
-                             file_out=os.path.join("output", os.path.basename(data_dir), "original.html"))
-
-    np.savetxt(os.path.join("output", os.path.basename(data_dir), "original_gt.out"), gt_poses, delimiter=' ')
-    np.savetxt(os.path.join("output", os.path.basename(data_dir), "original_est.out"), cur_poses, delimiter=' ')
-    np.save(os.path.join("output", os.path.basename(data_dir), "original_gt.npy"), gt_poses)
-    np.save(os.path.join("output", os.path.basename(data_dir), "original_est.npy"), cur_poses)
+                             file_out=os.path.join("output", os.path.basename(data_dir), "old.html"))
 
 if __name__ == "__main__":
     main()
